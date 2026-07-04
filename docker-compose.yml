@@ -1,15 +1,26 @@
 services:
   gps-stream:
     build: .
-    ports:
-      - "${GPS_PORT:-8080}:8080"
-    environment:
-      GPS_TOKEN: ${GPS_TOKEN:-}
-      GPS_HISTORY_SIZE: ${GPS_HISTORY_SIZE:-120}
+    container_name: phone-gps
     restart: unless-stopped
+    env_file: .env
+    networks:
+      - traefik_proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_proxy"
+      - "traefik.http.routers.phone-gps.rule=Host(`${TRAEFIK_HOST}`)"
+      - "traefik.http.routers.phone-gps.entrypoints=websecure"
+      - "traefik.http.routers.phone-gps.tls=true"
+      - "traefik.http.routers.phone-gps.tls.certresolver=letsencrypt"
+      - "traefik.http.services.phone-gps.loadbalancer.server.port=8080"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+networks:
+  traefik_proxy:
+    external: true
