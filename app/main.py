@@ -12,7 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.auth import access_required, is_authorized, unauthorized_response
 from app.store import LocationFix, LocationStore
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -31,6 +33,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class AccessAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        path = request.url.path
+        if access_required(path, request.method) and not is_authorized(request):
+            return unauthorized_response()
+        return await call_next(request)
+
+
+app.add_middleware(AccessAuthMiddleware)
 
 
 class LocationUpdate(BaseModel):
@@ -136,6 +149,9 @@ def clear_location(
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    if access_required("/ws", "GET") and not is_authorized(websocket):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     _ws_clients.add(websocket)
     try:
