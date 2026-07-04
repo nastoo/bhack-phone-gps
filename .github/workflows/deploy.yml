@@ -45,6 +45,7 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           TRAEFIK_HOST: ${{ vars.TRAEFIK_HOST }}
+          CERT_RESOLVER: ${{ vars.CERT_RESOLVER }}
           GPS_TOKEN: ${{ secrets.GPS_TOKEN }}
           GPS_HISTORY_SIZE: ${{ vars.GPS_HISTORY_SIZE }}
         with:
@@ -52,14 +53,15 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: TRAEFIK_HOST,GPS_TOKEN,GPS_HISTORY_SIZE
+          envs: TRAEFIK_HOST,CERT_RESOLVER,GPS_TOKEN,GPS_HISTORY_SIZE
           script_stop: true
           script: |
             set -euo pipefail
             cd ${{ env.DEPLOY_PATH }}
 
-            printf 'TRAEFIK_HOST=%s\nGPS_TOKEN=%s\nGPS_HISTORY_SIZE=%s\n' \
+            printf 'TRAEFIK_HOST=%s\nCERT_RESOLVER=%s\nGPS_TOKEN=%s\nGPS_HISTORY_SIZE=%s\n' \
               "${TRAEFIK_HOST:?TRAEFIK_HOST is required}" \
+              "${CERT_RESOLVER:-letsencrypt}" \
               "${GPS_TOKEN:-}" \
               "${GPS_HISTORY_SIZE:-120}" > .env
 
