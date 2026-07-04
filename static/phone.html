@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0f1419" />
+  <title>Share GPS</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Share GPS</h1>
+    <p class="subtitle">Stream this phone's location to the demo navigation service</p>
+  </header>
+
+  <main>
+    <section class="panel hero">
+      <p class="hint">Keep this page open while walking. Location updates every ~2 seconds.</p>
+      <div class="row">
+        <button id="start-btn">Start sharing</button>
+        <button id="stop-btn" class="secondary" disabled>Stop</button>
+      </div>
+      <p id="status" class="mono" style="margin-top:1rem">Tap Start and allow location access.</p>
+    </section>
+
+    <section class="panel">
+      <div class="label">Latest fix</div>
+      <pre id="fix">—</pre>
+    </section>
+
+    <section class="panel">
+      <div class="label">Optional token</div>
+      <input id="token" type="password" placeholder="GPS_TOKEN if configured" style="width:100%;padding:0.6rem;border-radius:8px;border:1px solid #243041;background:#0f1419;color:#e7ecf1" />
+    </section>
+  </main>
+
+  <script>
+    const startBtn = document.getElementById("start-btn");
+    const stopBtn = document.getElementById("stop-btn");
+    const statusEl = document.getElementById("status");
+    const fixEl = document.getElementById("fix");
+    const tokenEl = document.getElementById("token");
+
+    let watchId = null;
+    let sending = false;
+
+    function headers() {
+      const h = { "Content-Type": "application/json" };
+      const token = tokenEl.value.trim();
+      if (token) h["X-GPS-Token"] = token;
+      return h;
+    }
+
+    async function sendFix(pos) {
+      if (sending) return;
+      sending = true;
+      const c = pos.coords;
+      const body = {
+        lat: c.latitude,
+        lng: c.longitude,
+        accuracy: c.accuracy,
+        heading: c.heading,
+        speed: c.speed,
+        altitude: c.altitude,
+        device_id: "phone",
+        client_time: Date.now() / 1000,
+      };
+      try {
+        const res = await fetch("/api/location", {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        fixEl.textContent = JSON.stringify(data.location, null, 2);
+        statusEl.innerHTML = '<span class="pulse live"></span>Streaming — accuracy ±' + Math.round(c.accuracy) + ' m';
+      } catch (err) {
+        statusEl.innerHTML = '<span class="err">Send failed: ' + err.message + '</span>';
+      } finally {
+        sending = false;
+      }
+    }
+
+    startBtn.addEventListener("click", () => {
+      if (!navigator.geolocation) {
+        statusEl.textContent = "Geolocation not supported in this browser.";
+        return;
+      }
+      statusEl.textContent = "Requesting location permission…";
+      watchId = navigator.geolocation.watchPosition(
+        sendFix,
+        (err) => {
+          statusEl.innerHTML = '<span class="err">' + err.message + '</span>';
+        },
+        { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
+      );
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+    });
+
+    stopBtn.addEventListener("click", () => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      statusEl.textContent = "Stopped.";
+    });
+  </script>
+</body>
+</html>

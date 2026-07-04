@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GPS Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>GPS Dashboard</h1>
+    <p class="subtitle">Live phone position for demo navigation · <a href="/">Open phone page</a></p>
+  </header>
+
+  <main style="max-width:960px">
+    <section class="panel">
+      <div class="row" style="align-items:center">
+        <div>
+          <div class="label">Status</div>
+          <div id="live-label" class="stat warn">Waiting…</div>
+        </div>
+        <div>
+          <div class="label">Fixes</div>
+          <div id="fix-count" class="stat">0</div>
+        </div>
+        <div>
+          <div class="label">Age</div>
+          <div id="age" class="stat">—</div>
+        </div>
+      </div>
+      <div id="map"></div>
+      <pre id="fix" class="mono" style="margin-top:0.75rem">No data yet.</pre>
+    </section>
+
+    <section class="panel">
+      <div class="label">Integration (guide service)</div>
+      <pre id="integration" class="mono">GPS_STREAM_URL=http://localhost:8080</pre>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map("map").setView([53.8659, 10.6866], 14);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap",
+    }).addTo(map);
+
+    let marker = null;
+    let trail = L.polyline([], { color: "#2f6fed" }).addTo(map);
+    const points = [];
+
+    document.getElementById("integration").textContent =
+      "GPS_STREAM_URL=" + window.location.origin + "\n"
+      + "GET " + window.location.origin + "/api/location";
+
+    function applyFix(loc) {
+      if (!loc) return;
+      const latlng = [loc.lat, loc.lng];
+      if (!marker) {
+        marker = L.marker(latlng).addTo(map);
+      } else {
+        marker.setLatLng(latlng);
+      }
+      points.push(latlng);
+      if (points.length > 200) points.shift();
+      trail.setLatLngs(points);
+      map.panTo(latlng, { animate: true });
+      document.getElementById("fix").textContent = JSON.stringify(loc, null, 2);
+    }
+
+    function applyStatus(st) {
+      const liveEl = document.getElementById("live-label");
+      liveEl.textContent = st.live ? "Live" : "Stale / offline";
+      liveEl.className = "stat " + (st.live ? "ok" : "warn");
+      document.getElementById("fix-count").textContent = st.fix_count || 0;
+      document.getElementById("age").textContent =
+        st.last_fix_age_sec != null ? st.last_fix_age_sec + " s" : "—";
+      if (st.latest) applyFix(st.latest);
+    }
+
+    async function poll() {
+      try {
+        const res = await fetch("/api/status");
+        const data = await res.json();
+        applyStatus(data);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function connectWs() {
+      const proto = window.location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(proto + "://" + window.location.host + "/ws");
+      ws.onmessage = (ev) => {
+        const data = JSON.parse(ev.data);
+        if (data.type === "location") applyFix(data);
+        if (data.type === "status") applyStatus(data);
+      };
+      ws.onclose = () => setTimeout(connectWs, 2000);
+    }
+
+    poll();
+    setInterval(poll, 3000);
+    connectWs();
+  </script>
+</body>
+</html>
